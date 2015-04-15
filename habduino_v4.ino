@@ -64,9 +64,9 @@
  */
 
 /* BITS YOU WANT TO AMEND */
-
+#define APRS
 #define MTX2_FREQ 434.485 // format 434.XXX  
-char callsign[9] = "HABDUINO";  // MAX 9 CHARACTERS!!
+char callsign[9] = "GSBC.IL";  // MAX 9 CHARACTERS!!
 
 /* BELOW HERE YOU PROBABLY DON'T WANT TO BE CHANGING STUFF */
 
@@ -157,6 +157,11 @@ unsigned long startTime;
 char comment[3]={
   ' ', ' ', '\0'};
 
+#define pwm_pin A3
+#define NiCh A2
+#define Beeper A1
+long starttime = 0, uptime = 17, jtstime = 0;
+int hasJetissoned = 0;
 
 void setup()  { 
   pinMode(MTX2_TXD, OUTPUT);
@@ -190,6 +195,14 @@ void setup()  {
   initialise_interrupt();
   sensors.begin();
   tempsensors=sensors.getDeviceCount();
+
+  my_pwm(pwm_pin, 1000);
+  pinMode(NiCh, OUTPUT);
+  pinMode(Beeper, OUTPUT);
+  digitalWrite(Beeper, HIGH);
+  pinMode(A5, OUTPUT);
+  digitalWrite(A5, LOW);
+  
 } 
 
 void loop()   {
@@ -200,7 +213,7 @@ void loop()   {
 
   if(lock!=3) // Blink LED to indicate no lock
   {
-    errorstatus |=(1 << 5);  // Set bit 5 (Lock 0 = GPS Locked 1= Not Locked)
+    errorstatus |=(1 << 5);  // Set bit 5 (Lock 0 = GPS ed 1= Not Locked)
   }
   else
   {
@@ -267,6 +280,53 @@ void loop()   {
     wait(125);
     setupGPS();
   }
+  
+  // release mechanism  
+  if ((starttime == 0) && (hour != 0))
+    starttime = (hour * 3600) + (minute * 60) + second;
+  else
+    uptime = (hour * 3600) + (minute * 60) + second - starttime;
+    
+  if (!hasJetissoned)
+  {
+    if (alt > 10000)
+      Jetisson(1);
+    if (lon > 347000000) // 34.94
+      Jetisson(2);
+    if ( uptime > 30 * 60) // seconds
+     Jetisson(3);  
+    if (temperature1 < -35) 
+      Jetisson(4);
+    //if (battvaverage < 2.0)
+    //  Jettison(5);
+  }
+}
+
+
+void Jetisson(int reason)
+{
+  hasJetissoned |= 1 << reason;
+  jtstime = (hour * 3600) + (minute * 60) + second;
+  digitalWrite(NiCh,HIGH);
+  digitalWrite(Beeper,HIGH);
+  my_pwm(pwm_pin, 2500);
+  delay(10000);
+  digitalWrite(NiCh,LOW);  
+  digitalWrite(Beeper,LOW);
+}
+
+void my_pwm(int pin, int width)
+{
+  int i;
+  int full_time = 20000;
+  pinMode(pin, OUTPUT);
+  for (i=0; i<100; i++)
+  {
+    digitalWrite(pin, HIGH); // sets pin 12 HIGH
+    delayMicroseconds(width);   // waits for t1 uS (high time)
+    digitalWrite(pin, LOW);  // sets pin 12 LOW
+    delayMicroseconds(full_time-width);   // waits for t2 uS (low time)
+  }
 }
 
 void initialise_interrupt() 
@@ -309,6 +369,10 @@ ISR(TIMER1_COMPA_vect)
         digitalWrite(LED_OK, !digitalRead(LED_OK)); 
         digitalWrite(LED_WARN,LOW);    
       }
+      if (alt < 500)
+        digitalWrite(Beeper, !digitalRead(Beeper));
+      else
+        digitalWrite(Beeper, LOW);  
     }
   }
 
@@ -888,10 +952,10 @@ void tx_aprs()
     //0, 0, 0, 0,
     "WIDE1", 1, "WIDE2",1,
     //"WIDE2", 1,
-    "!/%s%sO   /A=%06ld|%s|%s/%s,%d,%i,%i'C,http://habduino.org",
+    "!/%s%sO   /A=%06ld|%s|%s/%s,%d,%i,%i'C,%02X, //bit.ly/1Et51q9",
     ax25_base91enc(slat, 4, aprs_lat),
     ax25_base91enc(slng, 4, aprs_lon),
-    aprs_alt, stlm, comment,APRS_CALLSIGN, count, errorstatus,temperature1
+    aprs_alt, stlm, comment,APRS_CALLSIGN, count, errorstatus,temperature1, hasJetissoned
       );
   }
   else
@@ -902,7 +966,7 @@ void tx_aprs()
     //0, 0, 0, 0,
     "WIDE1", 1, "WIDE2",1,
     //"WIDE2", 1,
-    "!/%s%sO   /A=%06ld|%s|%s/%s,%d,%i,%i,%i'C,http://habduino.org",
+    "!/%s%sO   /A=%06ld|%s|%s/%s,%d,%i,%i,%i'C,http://www.israelspaceballoon.com",
     ax25_base91enc(slat, 4, aprs_lat),
     ax25_base91enc(slng, 4, aprs_lon),
     aprs_alt, stlm, comment,APRS_CALLSIGN, count, errorstatus,temperature1,temperature2
